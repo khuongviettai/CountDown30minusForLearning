@@ -1,36 +1,33 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 void main() {
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.landscapeRight,
+    DeviceOrientation.landscapeLeft,
+  ]).then((_) {
+    runApp(const MyApp());
+  });
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Flutter Demo',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
         primarySwatch: Colors.blue,
       ),
       home: const MyHomePage(),
     );
   }
 }
-
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({Key? key}) : super(key: key);
@@ -40,84 +37,211 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-
-  int sec = 60;
+  int sec = 0;
   int min = 30;
-  String secText= '00';
+  String secText = '00';
   String minText = '30';
   Timer? _timer;
+  bool _isRunning = true;
+  bool _isResting = false;
+  final AudioCache _audioCache = AudioCache(prefix: 'assets/sound/');
 
   @override
   void initState() {
-    // TODO: implement initState
     super.initState();
     _handleTimer();
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     return Material(
-      child: Container(
-        color: Colors.black,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children:  [
-             Text(minText, style: const TextStyle(color: Colors.white, fontSize: 150.0, fontWeight: FontWeight.bold),),
-            const Text(":", style: TextStyle(color: Colors.white, fontSize: 100.0, fontWeight: FontWeight.bold),),
-             Text(secText, style: const TextStyle(color: Colors.white, fontSize: 150.0, fontWeight: FontWeight.bold),),
-          ],
+      child: GestureDetector(
+        onDoubleTap: _toggleTimer,
+        onPanUpdate: (details) {
+          if (details.delta.dx > 0) {
+            _startRestingPeriod();
+          } else if (details.delta.dx < 0) {
+            _startCountdownPeriod();
+          }
+        },
+        child: Container(
+          color: Colors.black,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (_isResting)
+                Column(
+                  children: [
+                    const Text(
+                      'Stop',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 50.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          minText,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 150.0,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const Text(
+                          ":",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 100.0,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          secText,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 150.0,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              if (!_isResting)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      minText,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 150.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Text(
+                      ":",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 100.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      secText,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 150.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  void _handleTimer(){
+  void _handleTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!_isRunning) return;
       setState(() {
-        if (min >=30) {
-          min--;
-          sec--;
-        }
-        else{
-          if(sec == 60){
-            min--;
-          }
-          sec--;
-        }
-        if(sec > 9){
-          secText = '$sec';
-        }
-        else{
-          if(sec > 0){
-          secText = '0$sec';
-          }
-          else{
-            sec = 60;
+        if (_isResting) {
+          if (sec == 0 && min == 0) {
+            _isResting = false;
+            min = 30;
+            sec = 0;
+            minText = '30';
             secText = '00';
-          }
-        }
-
-        if(min > 9){
-          minText = '$min';
-        }
-        else{
-          if(min > 0){
-            minText = '0$sec';
-          }
-          else{
-            min = 60;
-            minText = '00';
-            if(sec == 60){
-              _timer?.cancel();
+            _handleTimer();
+          } else {
+            if (sec == 0) {
+              sec = 59;
+              min--;
+            } else {
+              sec--;
             }
           }
+        } else {
+          if (sec == 0) {
+            if (min == 0) {
+              _timer?.cancel();
+              _playSound();
+              _isResting = true;
+              sec = 0;
+              min = 5;
+              minText = '05';
+              secText = '00';
+              _handleTimer();
+            } else {
+              sec = 59;
+              min--;
+            }
+          } else {
+            sec--;
+          }
         }
 
+        if (sec > 9) {
+          secText = '$sec';
+        } else {
+          secText = '0$sec';
+        }
+
+        if (min > 9) {
+          minText = '$min';
+        } else {
+          minText = '0$min';
+        }
       });
     });
   }
 
-}
+  void _startRestingPeriod() {
+    setState(() {
+      _isRunning = true;
+      _isResting = true;
+      min = 5;
+      sec = 0;
+      minText = '05';
+      secText = '00';
+      _timer?.cancel();
+      _handleTimer();
+    });
+  }
 
+  void _startCountdownPeriod() {
+    setState(() {
+      _isRunning = true;
+      _isResting = false;
+      min = 30;
+      sec = 0;
+      minText = '30';
+      secText = '00';
+      _timer?.cancel();
+      _handleTimer();
+    });
+  }
+
+  void _toggleTimer() {
+    setState(() {
+      _isRunning = !_isRunning;
+      if (_isRunning) {
+        _handleTimer();
+      } else {
+        _timer?.cancel();
+      }
+    });
+  }
+
+  void _playSound() async {
+    await _audioCache.play('end-time.mp3');
+  }
+}
